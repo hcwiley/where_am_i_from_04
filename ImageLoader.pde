@@ -12,7 +12,7 @@ class ImageLoader
     // Load images asynchronously
     for (int i = 0; i < imgCount; i++) {
       imgs[i] =
-        requestImage(srcDir + "/" + nf(i + startIdx, zeroPadding) + ".jpg");
+        loadImage(srcDir + "/" + nf(i + startIdx, zeroPadding) + ".jpg");
     }
   }
 
@@ -32,8 +32,17 @@ class ImageLoader
     return fullyLoaded;
   }
 
-  void drawImage(int idx, int x, int y, int w, int h)
+  void applyFilter(int filterType)
   {
+    for (int i = 0; i < imgs.length; i++) {
+      imgs[i].filter(filterType);
+    }
+  }
+
+  void drawImage(int idx, int x, int y, int w, int h, int overlay, int opacity)
+  {
+
+    tint(overlay, opacity);
 
     // get the right idx. allow modulo and negative end indexing
     int correctedIdx = idx;

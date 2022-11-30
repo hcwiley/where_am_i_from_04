@@ -14,37 +14,34 @@ float kickSize, snareSize, hatSize;
 float loaderX, loaderY, theta;
 
 ImageLoader drawingImages, paintingImages;
-int imageFrameRate = 10;
+int imageFrameRate = 3;
 int frameCount = 0;
+long totalElapsed = 0;
 
-int drawingOpacity = 255;
-float drawingOpacityDecay = 0.0;
+int drawingOpacity = 0;
+float drawingOpacityDecay = 0.1;
 
 int paintingOpacity = 0;
-float paintingOpacityDecay = 0.0;
+float paintingOpacityDecay = 0.1;
 
-String mp3Names[] = {
-  "a_earsnake.mp3",
-  "b_disposablechurch.mp3",
-  "b_ghastlytask.mp3",
-  "c_earthrisehigh.mp3",
-  "c_musclememoryloss.mp3",
-  "c_soulcoat.mp3",
-  "c_stutterface_1122.mp3",
-  "c_thinlinedance.mp3",
-  "z_coleandthefliesb.mp3"
-};
+String mp3Names[] = { "a_earsnake.mp3",         "b_disposablechurch.mp3",
+                      "b_ghastlytask.mp3",      "c_earthrisehigh.mp3",
+                      "c_musclememoryloss.mp3", "c_soulcoat.mp3",
+                      "c_stutterface_1122.mp3", "c_thinlinedance.mp3",
+                      "z_coleandthefliesb.mp3" };
 
 void
 setup()
 {
+  long start = millis();
   size(512, 512, P3D);
   fullScreen();
-  frameRate(imageFrameRate);
+  frameRate(60);
 
   minim = new Minim(this);
 
-  song = minim.loadFile(mp3Names[2], 1024);
+  song = minim.loadFile(mp3Names[4], 2048);
+  // song.skip(30 * 1000);
   // a beat detection object that is FREQ_ENERGY mode that
   // expects buffers the length of song's buffer size
   // and samples captured at songs's sample rate
@@ -66,10 +63,13 @@ setup()
 void
 draw()
 {
+  long start = millis();
+
   // check if we are still loading images
   if (!song.isPlaying()) {
     if (drawingImages.checkLoadCount() == drawingImages.imgCount &&
         paintingImages.checkLoadCount() == paintingImages.imgCount) {
+      drawingImages.applyFilter(INVERT);
       song.play();
     } else {
       // do some loading jazz
@@ -78,6 +78,7 @@ draw()
   }
 
   background(0);
+  noTint();
 
   // draw a green rectangle for every detect band
   // that had an onset this frame
@@ -107,36 +108,47 @@ draw()
 
   if (beat.isKick()) {
     kickSize = 32;
-    paintingOpacityDecay += 0.3;
+    paintingOpacityDecay += 0.4;
+    nextPaintingOpacity = round((paintingOpacity + 5) * 1.4);
   } else {
-    paintingOpacityDecay -= 0.01;
+    paintingOpacityDecay = 0.1;
   }
   if (beat.isSnare()) {
     snareSize = 32;
-    nextDrawingOpacity = 255;//drawingOpacity + 75;
+    nextDrawingOpacity = 255; // round((drawingOpacity + 75) * 1.25);
+    drawingOpacityDecay += 0.3;
   } else {
-    nextDrawingOpacity = 10;
+    drawingOpacityDecay -= 0.3;
+    nextDrawingOpacity = round((drawingOpacity * 0.7) - 10);
   }
   if (beat.isHat()) {
     hatSize = 32;
-    nextPaintingOpacity = 255;
+    nextPaintingOpacity = round((paintingOpacity + 100) * 1.5);
   }
 
-  paintingOpacityDecay = constrain(paintingOpacityDecay, 0.1, 0.1);
-
-  drawingOpacity = (int)lerp(drawingOpacity, (float)nextDrawingOpacity, 0.2);
-  paintingOpacity = (int)lerp(
-    paintingOpacity, (float)nextPaintingOpacity, paintingOpacityDecay);
+  nextDrawingOpacity = constrain(nextDrawingOpacity, 0, 255);
+  drawingOpacityDecay = constrain(drawingOpacityDecay, 0.0, 1);
+  drawingOpacityDecay = pow(pow(drawingOpacityDecay, 10), 0.8);
+  // drawingOpacityDecay = pow(pow(drawingOpacityDecay, 2), 0.1);
+  drawingOpacityDecay = constrain(drawingOpacityDecay, 0.0, 1);
+  drawingOpacity = (int)round(
+    lerp(drawingOpacity, (float)nextDrawingOpacity, 1 - drawingOpacityDecay));
+  drawingOpacity = constrain(drawingOpacity, 0, 255);
 
   // blit the drawing image
-  tint(155, drawingOpacity);
-  drawingImages.drawImage(frameCount, 0, 0, width, height);
+  drawingImages.drawImage(frameCount, 0, 0, width, height, 255, drawingOpacity);
+
+  nextPaintingOpacity = constrain(nextPaintingOpacity, 0, 255);
+  paintingOpacityDecay = constrain(paintingOpacityDecay, 0.0, 1.0);
+  paintingOpacity = (int)round(
+    lerp(paintingOpacity, (float)nextPaintingOpacity, paintingOpacityDecay));
+  paintingOpacity = constrain(paintingOpacity, 0, 255);
 
   // blit the painting image
-  tint(255, paintingOpacity);
-  paintingImages.drawImage(frameCount, 0, 0, width, height);
+  paintingImages.drawImage(
+    frameCount, 0, 0, width, height, 255, paintingOpacity);
 
-  tint(255, 255);
+  noTint();
 
   if (drawBeatText) {
     fill(55);
@@ -145,7 +157,7 @@ draw()
     text("KICK", width / 4, height / 2);
 
     textSize(snareSize);
-    text("SNARE", width / 2, height / 2);
+    text("SNARE [" + drawingOpacityDecay + "]", width / 2, height / 2);
 
     textSize(hatSize);
     text("HAT", 3 * width / 4, height / 2);
@@ -154,7 +166,19 @@ draw()
     snareSize = constrain(snareSize * 0.95, 16, 32);
     hatSize = constrain(hatSize * 0.95, 16, 32);
   }
-  frameCount++;
+
+  long end = millis();
+
+  // calculate elapsed time
+  long elapsed = end - start;
+  totalElapsed += elapsed;
+  frameCount = (int)round((float)totalElapsed / 1000 * imageFrameRate);
+
+  fill(0);
+  rect(0, 0, 100, 20);
+  fill(255);
+  textSize(20);
+  text("frameCount: " + frameCount, 15, 15);
 }
 
 // Loading animation
