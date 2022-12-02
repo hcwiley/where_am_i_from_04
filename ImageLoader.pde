@@ -13,13 +13,11 @@ class ImageLoader
     imgs = new PImage[imgCount];
     loadStates = new boolean[imgCount];
 
-
     // Load images asynchronously
     for (int i = 0; i < imgCount; i++) {
       imgs[i] =
-        //loadImage
-        requestImage
-        (srcDir + "/" + nf(i + startIdx, zeroPadding) + ".jpg");
+        // loadImage
+        requestImage(srcDir + "/" + nf(i + startIdx, zeroPadding) + ".jpg");
     }
   }
 
@@ -54,7 +52,7 @@ class ImageLoader
     // get the right idx. allow modulo and negative end indexing
     int correctedIdx = idx;
     if (correctedIdx < 0) {
-      correctedIdx = (imgs.length - idx) % imgs.length;
+      correctedIdx = (imgs.length + (idx % imgs.length));
     }
     if (correctedIdx >= imgs.length) {
       correctedIdx = idx % imgs.length;
@@ -65,7 +63,6 @@ class ImageLoader
       println("ImageLoader::drawImage: image not loaded: %d", idx);
       return;
     }
-
 
     // ok cool, draw the thing
     image(imgs[correctedIdx], x, y, w, h);
