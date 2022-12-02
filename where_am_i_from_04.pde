@@ -9,13 +9,17 @@ BeatListener bl;
 boolean drawBeatText = false;
 
 float kickSize, snareSize, hatSize;
+long numBeats = 0;
+int songIdx = 0;
 
 // For loading animation
 float loaderX, loaderY, theta;
 
 ImageLoader drawingImages, paintingImages;
-int imageFrameRate = 3;
-int frameCount = 0;
+float imageFrameRate = 10;
+float imageFrameRateDelta = 0.01;
+int blittedFrameCount = 0;
+int blittedOffset = 0;
 long totalElapsed = 0;
 
 int drawingOpacity = 0;
@@ -30,23 +34,28 @@ String mp3Names[] = { "a_earsnake.mp3",         "b_disposablechurch.mp3",
                       "c_stutterface_1122.mp3", "c_thinlinedance.mp3",
                       "z_coleandthefliesb.mp3" };
 
+boolean pauseLoop = false;
+long startTime0 = 0;
+
+long startLoad = 0;
+long endLoad = 0;
 void
 setup()
 {
   long start = millis();
   size(512, 512, P3D);
-  fullScreen();
-  frameRate(60);
+   fullScreen();
+  frameRate(30);
 
   minim = new Minim(this);
 
-  song = minim.loadFile(mp3Names[4], 2048);
+  song = minim.loadFile(mp3Names[songIdx], 2048);
   // song.skip(30 * 1000);
   // a beat detection object that is FREQ_ENERGY mode that
   // expects buffers the length of song's buffer size
   // and samples captured at songs's sample rate
   beat = new BeatDetect(song.bufferSize(), song.sampleRate());
-  beat.setSensitivity(10);
+  beat.setSensitivity(20);
   kickSize = snareSize = hatSize = 16;
   // make a new beat listener, so that we won't miss any buffers for the
   // analysis
@@ -54,8 +63,11 @@ setup()
   textFont(createFont("Helvetica", 16));
   textAlign(CENTER);
 
-  drawingImages = new ImageLoader("drawing", 190, 6, 1);
-  paintingImages = new ImageLoader("painting", 190, 6, 1);
+  int numImgs = 20000;
+  int offset = 100;
+  startLoad = millis();
+  drawingImages = new ImageLoader("drawing", numImgs, 6, offset);
+  paintingImages = new ImageLoader("painting", numImgs, 6, offset);
   drawingImages.checkLoadCount();
   paintingImages.checkLoadCount();
 }
@@ -63,45 +75,43 @@ setup()
 void
 draw()
 {
+  if (pauseLoop) {
+    return;
+  }
+
   long start = millis();
+
+  if (startTime0 == 0)
+    startTime0 = start;
 
   // check if we are still loading images
   if (!song.isPlaying()) {
     if (drawingImages.checkLoadCount() == drawingImages.imgCount &&
         paintingImages.checkLoadCount() == paintingImages.imgCount) {
+      if (endLoad == 0) {
+        endLoad = millis();
+        println("Loading took " + (endLoad - startLoad) + " ms");
+      }
       drawingImages.applyFilter(INVERT);
       song.play();
     } else {
       // do some loading jazz
+      println("Load count " +
+              (float)drawingImages.checkLoadCount() / drawingImages.imgCount +
+              "& " +
+              (float)paintingImages.checkLoadCount() / paintingImages.imgCount);
       runLoaderAni();
+      return;
     }
   }
 
   background(0);
   noTint();
 
-  // draw a green rectangle for every detect band
-  // that had an onset this frame
-  float rectW = width / beat.detectSize();
-  for (int i = 0; i < beat.detectSize(); ++i) {
-    // test one frequency band for an onset
-    if (beat.isOnset(i)) {
-      // fill(0, 200, 0);
-      // rect(i * rectW, 0, rectW, height);
-    }
-  }
-
-  // draw an orange rectangle over the bands in
-  // the range we are querying
-  int lowBand = 5;
-  int highBand = 15;
-  // at least this many bands must have an onset
-  // for isRange to return true
-  int numberOfOnsetsThreshold = 4;
-  if (beat.isRange(lowBand, highBand, numberOfOnsetsThreshold)) {
-    // fill(232,179,2,200);
-    // rect(rectW*lowBand, 0, (highBand-lowBand)*rectW, height);
-  }
+  // beat.detect(song.mix);
+  // if (beat.isOnset()) {
+  //  numBeats++;
+  //}
 
   int nextDrawingOpacity = 0;
   int nextPaintingOpacity = 0;
@@ -136,7 +146,8 @@ draw()
   drawingOpacity = constrain(drawingOpacity, 0, 255);
 
   // blit the drawing image
-  drawingImages.drawImage(frameCount, 0, 0, width, height, 255, drawingOpacity);
+  drawingImages.drawImage(
+    blittedFrameCount, 0, 0, width, height, 255, drawingOpacity);
 
   nextPaintingOpacity = constrain(nextPaintingOpacity, 0, 255);
   paintingOpacityDecay = constrain(paintingOpacityDecay, 0.0, 1.0);
@@ -146,7 +157,7 @@ draw()
 
   // blit the painting image
   paintingImages.drawImage(
-    frameCount, 0, 0, width, height, 255, paintingOpacity);
+    blittedFrameCount, 0, 0, width, height, 255, paintingOpacity);
 
   noTint();
 
@@ -157,7 +168,7 @@ draw()
     text("KICK", width / 4, height / 2);
 
     textSize(snareSize);
-    text("SNARE [" + drawingOpacityDecay + "]", width / 2, height / 2);
+    text("SNARE", width / 2, height / 2);
 
     textSize(hatSize);
     text("HAT", 3 * width / 4, height / 2);
@@ -171,14 +182,32 @@ draw()
 
   // calculate elapsed time
   long elapsed = end - start;
-  totalElapsed += elapsed;
-  frameCount = (int)round((float)totalElapsed / 1000 * imageFrameRate);
+  totalElapsed = end - startTime0;
 
-  fill(0);
-  rect(0, 0, 100, 20);
-  fill(255);
-  textSize(20);
-  text("frameCount: " + frameCount, 15, 15);
+  // println("totalElapsed: " + totalElapsed);
+
+  blittedFrameCount =
+    (int)round((float)totalElapsed / 1000.0f * imageFrameRate) + blittedOffset;
+
+  if (frameCount % 100 == 0) {
+    int randoJump = (int)random(30, 1000);
+    println("bump blit frame by " + randoJump);
+    blittedFrameCount += randoJump;
+  }
+
+  if (true) {
+    // calculate beats per minute
+    // float bps =
+    //  (float)numBeats / ((float)totalElapsed / (float)1000.0 / (float)60.0);
+
+    fill(0);
+    rect(0, 0, 175, 50);
+    fill(255);
+    textAlign(LEFT);
+    textSize(20);
+    text("blit count: " + blittedFrameCount, 15, 15);
+    text("frame count: " + frameCount, 15, 40);
+  }
 }
 
 // Loading animation
@@ -188,10 +217,90 @@ runLoaderAni()
   // Only run when images are loading
   ellipse(loaderX, loaderY, 10, 10);
   loaderX += 2;
-  loaderY = height / 2 + sin(theta) * (height / 8);
+  loaderY = height / 2 + sin(theta) * (height / 3);
   theta += PI / 22;
+  fill(map((float)loaderX * 1.8 % width, 0, 1.0, 0, 255));
+  textAlign(LEFT);
+  text(
+    (millis() - startLoad) + " ms", (loaderX * 1.4 + 20) % width, loaderY + 40);
   // Reposition ellipse if it goes off the screen
   if (loaderX > width + 5) {
     loaderX = -5;
+  }
+}
+
+void
+keyPressed()
+{
+  // If the key is between 'A'(65) to 'Z' and 'a' to 'z'(122)
+  if ((key >= 'A' && key <= 'Z') || (key >= 'a' && key <= 'z')) {
+    switch (key) {
+      case 'M':
+      case 'm': {
+        blittedOffset = (int)random(drawingImages.imgCount);
+        break;
+      }
+      case 'R':
+      case 'r': {
+        blittedFrameCount = 0;
+        song.skip(0);
+        break;
+      }
+      case 'P':
+      case 'p': {
+        pauseLoop = !pauseLoop;
+        if (pauseLoop) {
+          song.pause();
+        } else {
+          // song.play();
+        }
+        break;
+      }
+      case 'i': {
+        imageFrameRateDelta = 0.01;
+        break;
+      }
+      case 'I': {
+        imageFrameRate = 10;
+        break;
+      }
+      default: {
+        println("Not sure how to handle: " + key);
+        break;
+      }
+    }
+  } else {
+    long numOffset = 48;
+    if (key == CODED) {
+      switch (keyCode) {
+        case UP: {
+          imageFrameRate+=imageFrameRateDelta;
+          break;
+        }
+        case DOWN: {
+          imageFrameRate-=imageFrameRateDelta;
+          break;
+        }
+        case LEFT: {
+          imageFrameRateDelta *= 0.9;
+          break;
+        }case RIGHT: {
+          imageFrameRateDelta *= 1.1;
+          break;
+        }
+      }
+    }
+
+    if (key <= numOffset + 8 || key >= numOffset) {
+      long keyInt = key - 48; // parseInt(key);
+      println("keyInt: " + keyInt);
+      if (keyInt >= 0 && keyInt <= 8) {
+        songIdx = (int)keyInt;
+        song.pause();
+        song = minim.loadFile(mp3Names[songIdx], 2048);
+        bl = new BeatListener(beat, song);
+        song.play();
+      }
+    }
   }
 }

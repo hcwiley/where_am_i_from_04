@@ -1,18 +1,25 @@
 class ImageLoader
 {
 
-  int imgCount = 190;
-  PImage[] imgs = new PImage[imgCount];
+  PImage[] imgs;
   // Keeps track of loaded images (true or false)
-  boolean[] loadStates = new boolean[imgCount];
+  boolean[] loadStates;
+  int imgCount;
 
-  ImageLoader(String srcDir, long imgCount, int zeroPadding, int startIdx)
+  ImageLoader(String srcDir, int _imgCount, int zeroPadding, int startIdx)
   {
+
+    imgCount = _imgCount;
+    imgs = new PImage[imgCount];
+    loadStates = new boolean[imgCount];
+
 
     // Load images asynchronously
     for (int i = 0; i < imgCount; i++) {
       imgs[i] =
-        loadImage(srcDir + "/" + nf(i + startIdx, zeroPadding) + ".jpg");
+        //loadImage
+        requestImage
+        (srcDir + "/" + nf(i + startIdx, zeroPadding) + ".jpg");
     }
   }
 
@@ -47,19 +54,19 @@ class ImageLoader
     // get the right idx. allow modulo and negative end indexing
     int correctedIdx = idx;
     if (correctedIdx < 0) {
-      correctedIdx = imgs.length - idx;
+      correctedIdx = (imgs.length - idx) % imgs.length;
     }
     if (correctedIdx >= imgs.length) {
       correctedIdx = idx % imgs.length;
     }
-    
+
     if (imgs[correctedIdx].width <= 0) {
       // log a warning
-      print("ImageLoader::drawImage: image not loaded: %d", idx);
+      println("ImageLoader::drawImage: image not loaded: %d", idx);
       return;
     }
-    
-    
+
+
     // ok cool, draw the thing
     image(imgs[correctedIdx], x, y, w, h);
   }
